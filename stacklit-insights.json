@@ -2,6 +2,7 @@
   "purpose": {
     "cmd/functional-clusters": "Thin CLI executable entrypoint that delegates command handling to internal/cli.",
     "internal/cli": "Command-line parsing, version reporting, help text, and process exit behavior.",
+    "internal/cluster": "Cluster",
     "root": "Go module metadata, source installer, build targets, repository guardrails, and agent configuration."
   },
   "hints": {
