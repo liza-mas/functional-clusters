@@ -4,7 +4,7 @@ Functional Clusters is a Go CLI project.
 
 It builds deterministic advisory functional-cluster artifacts from:
 
-- SCIP Search graph export JSON (`scip.graph-export.v1`)
+- one or more SCIP Search graph export JSON files (`scip.graph-export.v1`)
 - Stacklit architecture export JSON (`stacklit.architecture-export.v1`)
 
 ## Install and Run
@@ -20,7 +20,8 @@ Build a cluster artifact:
 
 ```bash
 functional-clusters build \
-  --scip-graph scip-graph.json \
+  --scip-graph python-scip-graph.json \
+  --scip-graph typescript-scip-graph.json \
   --stacklit-architecture stacklit-architecture.json \
   -o functional-clusters.json
 ```

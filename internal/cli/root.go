@@ -14,7 +14,7 @@ var Version = "dev"
 const usage = `functional-clusters
 
 Usage:
-  functional-clusters build --scip-graph <file> --stacklit-architecture <file> -o <file>
+  functional-clusters build --scip-graph <file> [--scip-graph <file>...] --stacklit-architecture <file> -o <file>
   functional-clusters list --clusters <file>
   functional-clusters explain --clusters <file> <symbol>
   functional-clusters --help
@@ -129,7 +129,7 @@ func parseBuildArgs(args []string) (cluster.BuildOptions, string, error) {
 		value := args[i+1]
 		switch args[i] {
 		case "--scip-graph":
-			opts.SCIPGraphPath = value
+			opts.SCIPGraphPaths = append(opts.SCIPGraphPaths, value)
 		case "--stacklit-architecture":
 			opts.StacklitArchitecturePath = value
 		case "-o", "--output":
@@ -143,7 +143,7 @@ func parseBuildArgs(args []string) (cluster.BuildOptions, string, error) {
 		}
 		i++
 	}
-	if opts.SCIPGraphPath == "" {
+	if len(opts.SCIPGraphPaths) == 0 && opts.SCIPGraphPath == "" {
 		return opts, output, fmt.Errorf("missing required --scip-graph")
 	}
 	if opts.StacklitArchitecturePath == "" {

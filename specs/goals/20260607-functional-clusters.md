@@ -25,7 +25,7 @@ They are not treated as ground truth.
 
 Required:
 
-- SCIP Search graph export
+- one or more SCIP Search graph exports
 - Stacklit architecture export
 
 Optional:
@@ -54,7 +54,9 @@ Every cluster artifact includes:
 - `schema_version`: `"functional-clusters.v1"`
 - `generator`: tool name and version string
 - `generated_at`: UTC RFC3339 timestamp
-- `inputs.scip_graph.fingerprint`: fingerprint from the SCIP graph export
+- `inputs.scip_graph.fingerprint`: fingerprint from the SCIP graph export, or
+  a deterministic composite fingerprint when multiple SCIP graph exports are
+  supplied
 - `inputs.stacklit_architecture.fingerprint`: fingerprint from the Stacklit architecture export
 - `inputs.repository_metadata.fingerprint`: optional metadata fingerprint, if supplied
 - `inputs.adr_metadata.fingerprint`: optional metadata fingerprint, if supplied
@@ -309,7 +311,7 @@ Generate cluster artifacts.
 
 Required inputs:
 
-- SCIP Search graph export JSON
+- one or more SCIP Search graph export JSON files, supplied by repeating `--scip-graph`
 - Stacklit architecture export JSON
 
 Output:
@@ -343,7 +345,10 @@ They may be regenerated:
 They are not required to be rebuilt on every commit.
 
 Consumers can detect stale artifacts by comparing input fingerprints recorded in
-the cluster artifact with the current SCIP and Stacklit export fingerprints.
+the cluster artifact with the current SCIP and Stacklit export fingerprints. When
+multiple SCIP graph exports are supplied, the recorded SCIP fingerprint is a
+deterministic composite fingerprint derived from the individual SCIP export
+fingerprints.
 
 ## Error / Degraded Behavior
 
@@ -374,7 +379,7 @@ writing the artifact.
 
 ## Success Criteria
 
-Given valid SCIP graph and Stacklit architecture exports:
+Given valid SCIP graph exports and a valid Stacklit architecture export:
 
 - `build` writes a versioned functional cluster JSON artifact without reading source files
 - `list` returns every cluster identifier, label, confidence score, and confidence band from the artifact

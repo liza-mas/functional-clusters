@@ -106,6 +106,43 @@ func TestRunBuildListExplain(t *testing.T) {
 	}
 }
 
+func TestRunBuildAcceptsMultipleSCIPGraphs(t *testing.T) {
+	dir := t.TempDir()
+	scipPath := filepath.Join(dir, "scip.json")
+	extraSCIPPath := filepath.Join(dir, "extra-scip.json")
+	stacklitPath := filepath.Join(dir, "stacklit.json")
+	clustersPath := filepath.Join(dir, "clusters.json")
+	if err := os.WriteFile(scipPath, []byte(cliSCIPFixture()), 0644); err != nil {
+		t.Fatalf("write scip fixture: %v", err)
+	}
+	if err := os.WriteFile(extraSCIPPath, []byte(cliExtraSCIPFixture()), 0644); err != nil {
+		t.Fatalf("write extra scip fixture: %v", err)
+	}
+	if err := os.WriteFile(stacklitPath, []byte(cliStacklitFixture()), 0644); err != nil {
+		t.Fatalf("write stacklit fixture: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{
+		"build",
+		"--scip-graph", scipPath,
+		"--scip-graph", extraSCIPPath,
+		"--stacklit-architecture", stacklitPath,
+		"-o", clustersPath,
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("build exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	data, err := os.ReadFile(clustersPath)
+	if err != nil {
+		t.Fatalf("read clusters output: %v", err)
+	}
+	if !strings.Contains(string(data), "worker.Run") {
+		t.Fatalf("clusters output = %s, want symbol from repeated --scip-graph", data)
+	}
+}
+
 func TestRunBuildFailureDoesNotEmitPartialOutput(t *testing.T) {
 	dir := t.TempDir()
 	scipPath := filepath.Join(dir, "scip.json")
@@ -165,6 +202,15 @@ func cliSCIPFixture() string {
     {"id":"internal.Run","display_name":"Run","document_path":"internal/cli/root.go"}
   ],
   "edges":[{"source":"cmd.Main","target":"internal.Run","type":"implementation","provenance":"test","occurrence_count":1}]
+	}`
+}
+
+func cliExtraSCIPFixture() string {
+	return `{
+  "schema_version":"scip.graph-export.v1",
+  "inputs":{"scip_index":{"fingerprint":"sha256:extra-scip"}},
+  "nodes":[{"id":"worker.Run","display_name":"Run","document_path":"internal/worker/run.go"}],
+  "edges":[]
 }`
 }
 

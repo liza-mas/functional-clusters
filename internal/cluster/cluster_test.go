@@ -58,6 +58,38 @@ func TestBuildRecordsUnmappedAndOptionalMetadataDiagnostics(t *testing.T) {
 	}
 }
 
+func TestBuildFromFilesMergesMultipleSCIPGraphs(t *testing.T) {
+	dir := t.TempDir()
+	goPath := filepath.Join(dir, "go-scip.json")
+	tsPath := filepath.Join(dir, "ts-scip.json")
+	stacklitPath := filepath.Join(dir, "stacklit.json")
+	if err := os.WriteFile(goPath, []byte(authOnlySCIPFixture()), 0644); err != nil {
+		t.Fatalf("write Go SCIP fixture: %v", err)
+	}
+	if err := os.WriteFile(tsPath, []byte(billingOnlySCIPFixture()), 0644); err != nil {
+		t.Fatalf("write TypeScript SCIP fixture: %v", err)
+	}
+	if err := os.WriteFile(stacklitPath, []byte(architectureFixture()), 0644); err != nil {
+		t.Fatalf("write Stacklit fixture: %v", err)
+	}
+
+	artifact, err := BuildFromFiles(BuildOptions{
+		SCIPGraphPaths:           []string{goPath, tsPath},
+		StacklitArchitecturePath: stacklitPath,
+		GeneratedAt:              time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC),
+		GeneratorVersion:         "test",
+	})
+	if err != nil {
+		t.Fatalf("BuildFromFiles() error = %v", err)
+	}
+
+	assertClusterMembers(t, artifact, "Authentication", []string{"auth.Check", "auth.Login"})
+	assertClusterMembers(t, artifact, "Billing", []string{"billing.Charge", "billing.Invoice"})
+	if got, want := artifact.Inputs.SCIPGraph.Fingerprint, compositeSCIPFingerprint([]string{"sha256:go", "sha256:ts"}); got != want {
+		t.Fatalf("SCIP graph fingerprint = %q, want %q", got, want)
+	}
+}
+
 func TestBuildRecordsValidOptionalMetadataFingerprintsAndMalformedDiagnostics(t *testing.T) {
 	dir := t.TempDir()
 	repoPath := filepath.Join(dir, "repo.json")
@@ -287,6 +319,30 @@ func scipFixture() string {
     {"source":"billing.Invoice","target":"logger.Log","type":"reference","provenance":"test","occurrence_count":1},
     {"source":"billing.Charge","target":"logger.Log","type":"reference","provenance":"test","occurrence_count":1}
   ]
+	}`
+}
+
+func authOnlySCIPFixture() string {
+	return `{
+  "schema_version":"scip.graph-export.v1",
+  "inputs":{"scip_index":{"fingerprint":"sha256:go"}},
+  "nodes":[
+    {"id":"auth.Login","display_name":"Login","document_path":"internal/auth/login.go"},
+    {"id":"auth.Check","display_name":"Check","document_path":"internal/auth/check.go"}
+  ],
+  "edges":[{"source":"auth.Login","target":"auth.Check","type":"implementation","provenance":"test","occurrence_count":1}]
+}`
+}
+
+func billingOnlySCIPFixture() string {
+	return `{
+  "schema_version":"scip.graph-export.v1",
+  "inputs":{"scip_index":{"fingerprint":"sha256:ts"}},
+  "nodes":[
+    {"id":"billing.Invoice","display_name":"Invoice","document_path":"internal/billing/invoice.go"},
+    {"id":"billing.Charge","display_name":"Charge","document_path":"internal/billing/charge.go"}
+  ],
+  "edges":[{"source":"billing.Invoice","target":"billing.Charge","type":"implementation","provenance":"test","occurrence_count":1}]
 }`
 }
 

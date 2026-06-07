@@ -31,6 +31,7 @@ const (
 
 type BuildOptions struct {
 	SCIPGraphPath            string
+	SCIPGraphPaths           []string
 	StacklitArchitecturePath string
 	RepositoryMetadataPath   string
 	ADRMetadataPath          string
@@ -235,44 +236,34 @@ type clusterDraft struct {
 }
 
 func BuildFromFiles(opts BuildOptions) (Artifact, error) {
-	scipBytes, err := os.ReadFile(opts.SCIPGraphPath)
+	scip, err := readSCIPGraphs(opts.scipGraphPaths())
 	if err != nil {
-		return Artifact{}, fmt.Errorf("read SCIP graph: %w", err)
+		return Artifact{}, err
 	}
 	archBytes, err := os.ReadFile(opts.StacklitArchitecturePath)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("read Stacklit architecture: %w", err)
 	}
-	artifact, err := Build(scipBytes, archBytes, opts)
+	arch, err := decodeStacklitArchitecture(archBytes)
 	if err != nil {
 		return Artifact{}, err
 	}
-	return artifact, nil
+	return buildArtifact(scip, arch, opts)
 }
 
 func Build(scipBytes, architectureBytes []byte, opts BuildOptions) (Artifact, error) {
-	var scip scipGraph
-	if err := json.Unmarshal(scipBytes, &scip); err != nil {
-		return Artifact{}, fmt.Errorf("decode SCIP graph: %w", err)
+	scip, err := decodeSCIPGraph(scipBytes)
+	if err != nil {
+		return Artifact{}, err
 	}
-	if scip.SchemaVersion != scipSchema {
-		return Artifact{}, fmt.Errorf("unsupported SCIP graph schema_version %q", scip.SchemaVersion)
+	arch, err := decodeStacklitArchitecture(architectureBytes)
+	if err != nil {
+		return Artifact{}, err
 	}
-	if scip.Inputs.SCIPIndex.Fingerprint == "" {
-		return Artifact{}, errors.New("SCIP graph missing inputs.scip_index.fingerprint")
-	}
+	return buildArtifact(scip, arch, opts)
+}
 
-	var arch architectureExport
-	if err := json.Unmarshal(architectureBytes, &arch); err != nil {
-		return Artifact{}, fmt.Errorf("decode Stacklit architecture: %w", err)
-	}
-	if arch.SchemaVersion != stacklitSchema {
-		return Artifact{}, fmt.Errorf("unsupported Stacklit architecture schema_version %q", arch.SchemaVersion)
-	}
-	if arch.Inputs.StacklitIndex.Fingerprint == "" {
-		return Artifact{}, errors.New("Stacklit architecture missing inputs.stacklit_index.fingerprint")
-	}
-
+func buildArtifact(scip scipGraph, arch architectureExport, opts BuildOptions) (Artifact, error) {
 	diagnostics, repositoryInput, adrInput, adrs := optionalMetadataDiagnostics(opts)
 	nodes, edges, unmapped, entryPoints, units := buildUnifiedGraph(scip, arch, &diagnostics)
 	drafts := detectCommunities(nodes, edges)
@@ -307,6 +298,161 @@ func Build(scipBytes, architectureBytes []byte, opts BuildOptions) (Artifact, er
 		Unmapped:      unmapped,
 		Diagnostics:   sortDiagnostics(diagnostics),
 	}, nil
+}
+
+func (opts BuildOptions) scipGraphPaths() []string {
+	if len(opts.SCIPGraphPaths) > 0 {
+		return append([]string(nil), opts.SCIPGraphPaths...)
+	}
+	if opts.SCIPGraphPath != "" {
+		return []string{opts.SCIPGraphPath}
+	}
+	return nil
+}
+
+func readSCIPGraphs(paths []string) (scipGraph, error) {
+	if len(paths) == 0 {
+		return scipGraph{}, errors.New("missing required SCIP graph")
+	}
+	graphs := make([]scipGraph, 0, len(paths))
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if len(paths) == 1 {
+				return scipGraph{}, fmt.Errorf("read SCIP graph: %w", err)
+			}
+			return scipGraph{}, fmt.Errorf("read SCIP graph %q: %w", path, err)
+		}
+		graph, err := decodeSCIPGraph(data)
+		if err != nil {
+			if len(paths) == 1 {
+				return scipGraph{}, err
+			}
+			return scipGraph{}, fmt.Errorf("SCIP graph %q: %w", path, err)
+		}
+		graphs = append(graphs, graph)
+	}
+	return mergeSCIPGraphs(graphs), nil
+}
+
+func decodeSCIPGraph(data []byte) (scipGraph, error) {
+	var scip scipGraph
+	if err := json.Unmarshal(data, &scip); err != nil {
+		return scipGraph{}, fmt.Errorf("decode SCIP graph: %w", err)
+	}
+	if scip.SchemaVersion != scipSchema {
+		return scipGraph{}, fmt.Errorf("unsupported SCIP graph schema_version %q", scip.SchemaVersion)
+	}
+	if scip.Inputs.SCIPIndex.Fingerprint == "" {
+		return scipGraph{}, errors.New("SCIP graph missing inputs.scip_index.fingerprint")
+	}
+	return scip, nil
+}
+
+func decodeStacklitArchitecture(data []byte) (architectureExport, error) {
+	var arch architectureExport
+	if err := json.Unmarshal(data, &arch); err != nil {
+		return architectureExport{}, fmt.Errorf("decode Stacklit architecture: %w", err)
+	}
+	if arch.SchemaVersion != stacklitSchema {
+		return architectureExport{}, fmt.Errorf("unsupported Stacklit architecture schema_version %q", arch.SchemaVersion)
+	}
+	if arch.Inputs.StacklitIndex.Fingerprint == "" {
+		return architectureExport{}, errors.New("Stacklit architecture missing inputs.stacklit_index.fingerprint")
+	}
+	return arch, nil
+}
+
+func mergeSCIPGraphs(graphs []scipGraph) scipGraph {
+	if len(graphs) == 1 {
+		return graphs[0]
+	}
+
+	nodeByID := map[string]scipNode{}
+	edgeByKey := map[string]scipEdge{}
+	fingerprints := make([]string, 0, len(graphs))
+	for _, graph := range graphs {
+		fingerprints = append(fingerprints, graph.Inputs.SCIPIndex.Fingerprint)
+		for _, node := range graph.Nodes {
+			existing, ok := nodeByID[node.ID]
+			if !ok {
+				nodeByID[node.ID] = node
+				continue
+			}
+			nodeByID[node.ID] = mergeSCIPNode(existing, node)
+		}
+		for _, edge := range graph.Edges {
+			edgeByKey[scipEdgeKey(edge)] = edge
+		}
+	}
+
+	nodeIDs := keys(nodeByID)
+	nodes := make([]scipNode, 0, len(nodeIDs))
+	for _, id := range nodeIDs {
+		nodes = append(nodes, nodeByID[id])
+	}
+
+	edgeKeys := keys(edgeByKey)
+	edges := make([]scipEdge, 0, len(edgeKeys))
+	for _, key := range edgeKeys {
+		edges = append(edges, edgeByKey[key])
+	}
+
+	return scipGraph{
+		SchemaVersion: scipSchema,
+		Inputs: scipInputs{SCIPIndex: inputFingerprint{
+			Fingerprint: compositeSCIPFingerprint(fingerprints),
+		}},
+		Nodes: nodes,
+		Edges: edges,
+	}
+}
+
+func mergeSCIPNode(left, right scipNode) scipNode {
+	return scipNode{
+		ID:           left.ID,
+		DisplayName:  chooseStableValue(left.DisplayName, right.DisplayName),
+		Kind:         chooseStableValue(left.Kind, right.Kind),
+		Package:      chooseStableValue(left.Package, right.Package),
+		DocumentPath: chooseStableValue(left.DocumentPath, right.DocumentPath),
+	}
+}
+
+func chooseStableValue(left, right string) string {
+	switch {
+	case left == "":
+		return right
+	case right == "":
+		return left
+	case right < left:
+		return right
+	default:
+		return left
+	}
+}
+
+func scipEdgeKey(edge scipEdge) string {
+	weight := ""
+	if edge.Weight != nil {
+		weight = fmt.Sprintf("%g", *edge.Weight)
+	}
+	return strings.Join([]string{
+		edge.Source,
+		edge.Target,
+		edge.Type,
+		edge.Provenance,
+		fmt.Sprintf("%d", edge.OccurrenceCount),
+		weight,
+	}, "\x00")
+}
+
+func compositeSCIPFingerprint(fingerprints []string) string {
+	if len(fingerprints) == 1 {
+		return fingerprints[0]
+	}
+	sorted := append([]string(nil), fingerprints...)
+	sort.Strings(sorted)
+	return Fingerprint([]byte(scipSchema + "\x00" + strings.Join(sorted, "\x00")))
 }
 
 func WriteArtifact(path string, artifact Artifact) error {
