@@ -1,0 +1,14 @@
+{
+  "purpose": {
+    "cmd/functional-clusters": "Thin CLI executable entrypoint that delegates command handling to internal/cli.",
+    "internal/cli": "Command-line parsing, version reporting, help text, and process exit behavior.",
+    "root": "Go module metadata, source installer, build targets, repository guardrails, and agent configuration."
+  },
+  "hints": {
+    "add_feature": "For new CLI-visible behavior, start in internal/cli and keep cmd/functional-clusters as a thin process entrypoint.",
+    "test_command": "go test ./..."
+  },
+  "architecture": {
+    "ai_summary": "Functional Clusters is initialized as a small Go CLI. The cmd/functional-clusters package owns only process wiring, while internal/cli contains command behavior and version/help output. Root build files follow the source-install pattern used by sibling Go projects, with make build, make test, make install, and install.sh verifying that installed binaries can report their build provenance."
+  }
+}

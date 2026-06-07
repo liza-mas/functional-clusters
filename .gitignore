@@ -1,0 +1,32 @@
+# Coding agents
+.claude/
+.codex/
+
+# Build artifacts
+/functional-clusters
+build/
+dist/
+
+# Go
+vendor/
+coverage.out
+*.scip
+
+# macOS
+.DS_Store
+
+# IDE
+*.iml
+.idea/
+.vscode/
+
+# User-specific generated files
+.mcp.json
+
+# Symlinks to the contract
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+
+.worktrees/
+stacklit.json
