@@ -44,10 +44,10 @@ Explain a symbol's cluster membership:
 functional-clusters explain --clusters functional-clusters.json 'scip-go gomod example.com/project internal/commands/Run().'
 ```
 
-`list` hides low-confidence clusters by default; pass `--all` to include every
-cluster recorded in the artifact. `list` and `explain` produce deterministic
-plain text in v1. The cluster artifact itself is JSON with schema version
-`functional-clusters.v1`.
+`list` hides low-confidence clusters by default and sorts rows by decreasing
+confidence; pass `--all` to include every cluster recorded in the artifact.
+`list` and `explain` produce deterministic plain text in v1. The cluster artifact
+itself is JSON with schema version `functional-clusters.v1`.
 
 From a local clone:
 

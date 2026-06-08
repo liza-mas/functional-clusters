@@ -330,8 +330,8 @@ The command reads the cluster artifact and does not read source files.
 
 ### List
 
-List medium- and high-confidence clusters by default. Include all discovered
-clusters when `--all` is passed.
+List medium- and high-confidence clusters by default, sorted by decreasing
+confidence. Include all discovered clusters when `--all` is passed.
 
 ## Freshness
 
@@ -383,7 +383,7 @@ writing the artifact.
 Given valid SCIP graph exports and a valid Stacklit architecture export:
 
 - `build` writes a versioned functional cluster JSON artifact without reading source files
-- `list` returns medium- and high-confidence cluster identifiers, labels, confidence scores, and confidence bands by default
+- `list` returns medium- and high-confidence cluster identifiers, labels, confidence scores, and confidence bands by default, sorted by decreasing confidence
 - `list --all` returns every cluster identifier, label, confidence score, and confidence band from the artifact
 - `explain <symbol>` returns the symbol's cluster membership, nearby clusters, and dependency boundaries from the artifact
 - stale inputs can be detected from recorded input fingerprints

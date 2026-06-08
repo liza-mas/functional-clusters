@@ -513,10 +513,23 @@ func RenderListWithOptions(artifact Artifact, w io.Writer, opts ListOptions) err
 	if err != nil {
 		return err
 	}
+	clusters := make([]Cluster, 0, len(artifact.Clusters))
 	for _, cluster := range artifact.Clusters {
 		if !opts.IncludeLowConfidence && cluster.ConfidenceBand == "low" {
 			continue
 		}
+		clusters = append(clusters, cluster)
+	}
+	sort.SliceStable(clusters, func(i, j int) bool {
+		if clusters[i].Confidence != clusters[j].Confidence {
+			return clusters[i].Confidence > clusters[j].Confidence
+		}
+		if clusters[i].Label != clusters[j].Label {
+			return clusters[i].Label < clusters[j].Label
+		}
+		return clusters[i].ID < clusters[j].ID
+	})
+	for _, cluster := range clusters {
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%.2f\t%s\n", cluster.ID, cluster.Label, cluster.Confidence, cluster.ConfidenceBand); err != nil {
 			return err
 		}
