@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/liza-mas/functional-clusters/internal/cluster"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -103,6 +105,41 @@ func TestRunBuildListExplain(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Dependency boundaries:") {
 		t.Fatalf("explain stdout = %q, want dependency boundaries", stdout.String())
+	}
+}
+
+func TestRunListAllIncludesLowConfidenceClusters(t *testing.T) {
+	dir := t.TempDir()
+	clustersPath := filepath.Join(dir, "clusters.json")
+	artifact := cluster.Artifact{
+		SchemaVersion: cluster.SchemaVersion,
+		Clusters: []cluster.Cluster{
+			{ID: "cluster-001", Label: "Command Handling", Confidence: 0.75, ConfidenceBand: "high"},
+			{ID: "cluster-002", Label: "err", Confidence: 0.28, ConfidenceBand: "low"},
+		},
+	}
+	if err := cluster.WriteArtifact(clustersPath, artifact); err != nil {
+		t.Fatalf("write cluster artifact: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"list", "--clusters", clustersPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("list exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "err") {
+		t.Fatalf("filtered list stdout = %q, want low-confidence cluster omitted", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run([]string{"list", "--clusters", clustersPath, "--all"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("list --all exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "err") {
+		t.Fatalf("list --all stdout = %q, want low-confidence cluster included", stdout.String())
 	}
 }
 

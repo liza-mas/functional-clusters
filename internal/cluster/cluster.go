@@ -121,6 +121,10 @@ type Diagnostic struct {
 	Message  string `json:"message"`
 }
 
+type ListOptions struct {
+	IncludeLowConfidence bool
+}
+
 type scipGraph struct {
 	SchemaVersion string     `json:"schema_version"`
 	Inputs        scipInputs `json:"inputs"`
@@ -501,11 +505,18 @@ func ReadArtifact(path string) (Artifact, error) {
 }
 
 func RenderList(artifact Artifact, w io.Writer) error {
+	return RenderListWithOptions(artifact, w, ListOptions{})
+}
+
+func RenderListWithOptions(artifact Artifact, w io.Writer, opts ListOptions) error {
 	_, err := fmt.Fprintln(w, "ID\tLABEL\tCONFIDENCE\tBAND")
 	if err != nil {
 		return err
 	}
 	for _, cluster := range artifact.Clusters {
+		if !opts.IncludeLowConfidence && cluster.ConfidenceBand == "low" {
+			continue
+		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%.2f\t%s\n", cluster.ID, cluster.Label, cluster.Confidence, cluster.ConfidenceBand); err != nil {
 			return err
 		}

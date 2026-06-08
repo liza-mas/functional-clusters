@@ -15,7 +15,7 @@ const usage = `functional-clusters
 
 Usage:
   functional-clusters build --scip-graph <file> [--scip-graph <file>...] --stacklit-architecture <file> -o <file>
-  functional-clusters list --clusters <file>
+  functional-clusters list --clusters <file> [--all]
   functional-clusters explain --clusters <file> <symbol>
   functional-clusters --help
   functional-clusters --version
@@ -84,7 +84,7 @@ func runBuild(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runList(args []string, stdout io.Writer, stderr io.Writer) int {
-	path, err := parseClusterPath(args)
+	path, opts, err := parseListArgs(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
 		return 1
@@ -94,7 +94,7 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "list failed: %v\n", err)
 		return 1
 	}
-	if err := cluster.RenderList(artifact, stdout); err != nil {
+	if err := cluster.RenderListWithOptions(artifact, stdout, opts); err != nil {
 		_, _ = fmt.Fprintf(stderr, "list failed: %v\n", err)
 		return 1
 	}
@@ -152,11 +152,27 @@ func parseBuildArgs(args []string) (cluster.BuildOptions, string, error) {
 	return opts, output, nil
 }
 
-func parseClusterPath(args []string) (string, error) {
-	if len(args) != 2 || args[0] != "--clusters" {
-		return "", fmt.Errorf("usage: functional-clusters list --clusters <file>")
+func parseListArgs(args []string) (string, cluster.ListOptions, error) {
+	var path string
+	var opts cluster.ListOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--clusters":
+			if i+1 >= len(args) {
+				return "", opts, fmt.Errorf("missing value for --clusters")
+			}
+			path = args[i+1]
+			i++
+		case "--all":
+			opts.IncludeLowConfidence = true
+		default:
+			return "", opts, fmt.Errorf("unknown list flag: %s", args[i])
+		}
 	}
-	return args[1], nil
+	if path == "" {
+		return "", opts, fmt.Errorf("usage: functional-clusters list --clusters <file> [--all]")
+	}
+	return path, opts, nil
 }
 
 func parseExplainArgs(args []string) (string, string, error) {

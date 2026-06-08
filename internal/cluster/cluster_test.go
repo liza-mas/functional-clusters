@@ -242,6 +242,29 @@ func TestRenderListAndExplainUseArtifactOnly(t *testing.T) {
 	}
 }
 
+func TestRenderListFiltersLowConfidenceClustersByDefault(t *testing.T) {
+	artifact := Artifact{Clusters: []Cluster{
+		{ID: "cluster-001", Label: "Command Handling", Confidence: 0.75, ConfidenceBand: "high"},
+		{ID: "cluster-002", Label: "err", Confidence: 0.28, ConfidenceBand: "low"},
+	}}
+
+	var filtered strings.Builder
+	if err := RenderList(artifact, &filtered); err != nil {
+		t.Fatalf("RenderList() error = %v", err)
+	}
+	if strings.Contains(filtered.String(), "err") {
+		t.Fatalf("filtered list = %q, want low-confidence cluster omitted", filtered.String())
+	}
+
+	var all strings.Builder
+	if err := RenderListWithOptions(artifact, &all, ListOptions{IncludeLowConfidence: true}); err != nil {
+		t.Fatalf("RenderListWithOptions() error = %v", err)
+	}
+	if !strings.Contains(all.String(), "err") {
+		t.Fatalf("all list = %q, want low-confidence cluster included", all.String())
+	}
+}
+
 func TestBuildOutputIsDeterministicExceptGeneratedAt(t *testing.T) {
 	opts := BuildOptions{GeneratedAt: time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC), GeneratorVersion: "test"}
 	first, err := Build([]byte(scipFixture()), []byte(architectureFixture()), opts)
