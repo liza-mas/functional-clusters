@@ -764,24 +764,47 @@ func attachWeakOnlyNodes(groups map[string][]string, edges []weightedEdge, stron
 	}
 	sort.Strings(weakNodes)
 
+	// Score every weak node in one pass over the edges. A weak node's group is
+	// never stable, so each edge scores at most one weak node.
+	scoresByNode := map[string]map[string]float64{}
+	addScore := func(node, group string, weight float64) {
+		scores := scoresByNode[node]
+		if scores == nil {
+			scores = map[string]float64{}
+			scoresByNode[node] = scores
+		}
+		scores[group] += weight
+	}
+	for _, edge := range edges {
+		switch {
+		case weakNodeGroup[edge.source] != "" && stableTargets[nodeGroup[edge.target]]:
+			addScore(edge.source, nodeGroup[edge.target], edge.weight)
+		case weakNodeGroup[edge.target] != "" && stableTargets[nodeGroup[edge.source]]:
+			addScore(edge.target, nodeGroup[edge.source], edge.weight)
+		}
+	}
+
+	// Groups are not modified while scoring, so their tie-break keys can be cached.
+	keyCache := map[string]string{}
+	cachedGroupKey := func(group string) string {
+		key, ok := keyCache[group]
+		if !ok {
+			key = groupKey(groups[group], nodes)
+			keyCache[group] = key
+		}
+		return key
+	}
+
 	moves := map[string]string{}
 	for _, node := range weakNodes {
-		scores := map[string]float64{}
-		for _, edge := range edges {
-			switch {
-			case edge.source == node && stableTargets[nodeGroup[edge.target]]:
-				scores[nodeGroup[edge.target]] += edge.weight
-			case edge.target == node && stableTargets[nodeGroup[edge.source]]:
-				scores[nodeGroup[edge.source]] += edge.weight
-			}
-		}
+		scores := scoresByNode[node]
 		if len(scores) == 0 {
 			continue
 		}
 		bestGroup := ""
 		bestScore := -1.0
 		for candidate, score := range scores {
-			if score > bestScore || (score == bestScore && groupKey(groups[candidate], nodes) < groupKey(groups[bestGroup], nodes)) {
+			if score > bestScore || (score == bestScore && cachedGroupKey(candidate) < cachedGroupKey(bestGroup)) {
 				bestGroup = candidate
 				bestScore = score
 			}
@@ -789,6 +812,7 @@ func attachWeakOnlyNodes(groups map[string][]string, edges []weightedEdge, stron
 		moves[node] = bestGroup
 	}
 
+	touched := map[string]bool{}
 	for _, node := range weakNodes {
 		target := moves[node]
 		if target == "" {
@@ -796,8 +820,11 @@ func attachWeakOnlyNodes(groups map[string][]string, edges []weightedEdge, stron
 		}
 		source := weakNodeGroup[node]
 		groups[target] = append(groups[target], node)
-		sort.Strings(groups[target])
+		touched[target] = true
 		delete(groups, source)
+	}
+	for target := range touched {
+		sort.Strings(groups[target])
 	}
 }
 
@@ -812,10 +839,11 @@ func groupKey(ids []string, nodes map[string]graphNode) string {
 
 func materializeClusters(drafts []clusterDraft, nodes map[string]graphNode, edges []weightedEdge, entryPoints map[string][]string, units map[string]architectureUnit, adrs *adrMetadata) []Cluster {
 	var clusters []Cluster
+	internal, external := edgeWeightsByDraft(drafts, edges)
 	for i, draft := range drafts {
 		id := fmt.Sprintf("cluster-%03d", i+1)
 		label, labelQuality := labelForDraft(draft, nodes, units, adrs)
-		metrics := confidenceForDraft(draft, edges, labelQuality)
+		metrics := confidenceForDraft(draft, internal[i], external[i], labelQuality)
 		if len(drafts) == 1 {
 			metrics.Separation = 0
 		}
@@ -1016,22 +1044,36 @@ func summaryForDraft(label string, draft clusterDraft, nodes map[string]graphNod
 	return Summary{Purpose: purpose, ImportantSymbols: important, ImportantEntryPoints: eps}
 }
 
-func confidenceForDraft(draft clusterDraft, edges []weightedEdge, labelQuality float64) ConfidenceMetrics {
-	member := map[string]bool{}
-	for _, id := range draft.nodeIDs {
-		member[id] = true
-	}
-	var internal, external float64
-	for _, edge := range edges {
-		source := member[edge.source]
-		target := member[edge.target]
-		switch {
-		case source && target:
-			internal += edge.weight
-		case source || target:
-			external += edge.weight
+// edgeWeightsByDraft sums, per draft, the weight of edges with both endpoints
+// inside it (internal) and with exactly one endpoint inside it (external).
+// Drafts partition the nodes, so one pass over the edges covers every draft.
+func edgeWeightsByDraft(drafts []clusterDraft, edges []weightedEdge) ([]float64, []float64) {
+	draftOf := map[string]int{}
+	for i, draft := range drafts {
+		for _, id := range draft.nodeIDs {
+			draftOf[id] = i
 		}
 	}
+	internal := make([]float64, len(drafts))
+	external := make([]float64, len(drafts))
+	for _, edge := range edges {
+		source, sourceOK := draftOf[edge.source]
+		target, targetOK := draftOf[edge.target]
+		if sourceOK && targetOK && source == target {
+			internal[source] += edge.weight
+			continue
+		}
+		if sourceOK {
+			external[source] += edge.weight
+		}
+		if targetOK {
+			external[target] += edge.weight
+		}
+	}
+	return internal, external
+}
+
+func confidenceForDraft(draft clusterDraft, internal, external, labelQuality float64) ConfidenceMetrics {
 	cohesion := 0.0
 	if len(draft.nodeIDs) <= 1 {
 		cohesion = 0.3
